@@ -10,10 +10,18 @@ export default defineConfig(({ mode }) => {
     plugins: [react()],
     define: {
       // Correctly handle the process.env.API_KEY replacement during build
-      // We check for GEMINI_API_KEY (from your Netlify screenshot) or fallback to API_KEY
-      'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY || env.API_KEY),
-      // Add DeepSeek Key support
-      'process.env.DEEPSEEK_API_KEY': JSON.stringify(env.DEEPSEEK_API_KEY)
+      // We accept GEMINI_API_KEY, API_KEY, or GOOGLE_API_KEY to be flexible
+      'process.env.API_KEY': JSON.stringify(
+        env.GEMINI_API_KEY || 
+        env.API_KEY || 
+        env.GOOGLE_API_KEY ||
+        env.REACT_APP_GEMINI_API_KEY
+      ),
+      // Add DeepSeek Key support with a fallback name to bypass Netlify "already exists" UI bugs
+      'process.env.DEEPSEEK_API_KEY': JSON.stringify(
+        env.DEEPSEEK_API_KEY || 
+        env.DEEPSEEK_KEY
+      )
     }
   };
 });

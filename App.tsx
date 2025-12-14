@@ -16,6 +16,7 @@ const App: React.FC = () => {
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [currentFilename, setCurrentFilename] = useState<string>("");
   const [currentHistoryId, setCurrentHistoryId] = useState<string>("");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   
   // Player State
   const [isPlaying, setIsPlaying] = useState(false);
@@ -58,6 +59,7 @@ const App: React.FC = () => {
   // File Handling
   const handleFileSelect = async (file: File) => {
     setAppState(AppState.PROCESSING);
+    setErrorMessage(null);
     try {
       // 1. Create Object URL for playback
       const url = URL.createObjectURL(file);
@@ -79,11 +81,20 @@ const App: React.FC = () => {
       });
 
       setAppState(AppState.READY);
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
       setAppState(AppState.ERROR);
-      // Optional: reset after timeout
-      setTimeout(() => setAppState(AppState.IDLE), 3000);
+      // Capture the specific error message (e.g., "Gemini API Key is missing")
+      setErrorMessage(error.message || "Analysis failed. Please try again.");
+      
+      // Reset state after a delay only if it's NOT a configuration error
+      // If it's an API Key error, keep it visible so user can fix it
+      if (!error.message?.includes("API Key")) {
+         setTimeout(() => {
+            setAppState(AppState.IDLE);
+            setErrorMessage(null);
+         }, 4000);
+      }
     }
   };
 
@@ -139,6 +150,7 @@ const App: React.FC = () => {
       setAudioUrl(null);
       setAnalysis(null);
       setAppState(AppState.IDLE);
+      setErrorMessage(null);
       setCurrentTime(0);
   }
 
@@ -197,7 +209,7 @@ const App: React.FC = () => {
             <FileUpload 
               onFileSelect={handleFileSelect} 
               isLoading={appState === AppState.PROCESSING}
-              error={appState === AppState.ERROR ? "Analysis failed. Please try again." : null}
+              error={errorMessage}
             />
           ) : (
              analysis && (
