@@ -1,8 +1,15 @@
 import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { AnalysisResult, WordDefinition, PronunciationScore } from "../types";
 
-// Initialize Gemini Client
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Helper to get Gemini Client lazily
+// This prevents the app from crashing on load if the API key is missing/invalid
+const getGenAI = () => {
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) {
+    throw new Error("Gemini API Key is missing. Please check your Netlify Environment Variables.");
+  }
+  return new GoogleGenAI({ apiKey: apiKey });
+};
 
 // Singleton Audio Context for playback
 let sharedAudioContext: AudioContext | null = null;
@@ -97,6 +104,7 @@ export const analyzeAudio = async (file: File): Promise<AnalysisResult> => {
   `;
 
   try {
+      const ai = getGenAI();
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
         contents: {
@@ -151,7 +159,7 @@ export const analyzeAudio = async (file: File): Promise<AnalysisResult> => {
       if (process.env.DEEPSEEK_API_KEY) {
           throw new Error("Gemini Connection Failed. Note: DeepSeek API is available but cannot process Audio files directly. Please ensure you can access Google services for the initial file analysis.");
       }
-      throw new Error("Failed to analyze audio. Please check your network connection.");
+      throw new Error("Failed to analyze audio. Please check your network connection or API Key.");
   }
 };
 
@@ -160,6 +168,7 @@ export const defineWord = async (word: string, contextSentence: string): Promise
   const prompt = `Define the word "${word}" in the context of this sentence: "${contextSentence}". Return JSON.`;
   
   try {
+      const ai = getGenAI();
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
         contents: prompt,
@@ -228,6 +237,7 @@ export const scorePronunciation = async (targetText: string, userAudioBlob: Blob
   `;
 
   try {
+      const ai = getGenAI();
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
         contents: {
@@ -262,6 +272,7 @@ export const scorePronunciation = async (targetText: string, userAudioBlob: Blob
 // 4. TTS for Native Rewrite
 export const generateSpeech = async (text: string): Promise<Uint8Array> => {
   try {
+      const ai = getGenAI();
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash-preview-tts',
         contents: {
