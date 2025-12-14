@@ -9,9 +9,14 @@ const getGenAI = () => {
     throw new Error("Gemini API Key is missing. Please check your Netlify Environment Variables.");
   }
   
+  // Use current origin + /google-api as the base URL to route through our proxy
+  // This is CRITICAL for access in China
+  const proxyUrl = `${window.location.origin}/google-api`;
+  
   return new GoogleGenAI({ 
-    apiKey: apiKey
-  });
+    apiKey: apiKey,
+    baseUrl: proxyUrl
+  } as any);
 };
 
 // Singleton Audio Context for playback
