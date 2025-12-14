@@ -10,7 +10,8 @@ export default defineConfig(({ mode }) => {
     plugins: [react()],
     define: {
       // Correctly handle the process.env.API_KEY replacement during build
-      'process.env.API_KEY': JSON.stringify(env.API_KEY)
+      // We check for GEMINI_API_KEY (from your Netlify screenshot) or fallback to API_KEY
+      'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY || env.API_KEY)
     }
   };
 });
