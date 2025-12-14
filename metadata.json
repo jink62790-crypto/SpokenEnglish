@@ -1,0 +1,7 @@
+{
+  "name": "Spoken Easily",
+  "description": "A mobile-first English learning app using Gemini for AI transcription, native rewrites, pronunciation scoring, and shadowing exercises.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
