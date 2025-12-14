@@ -61,7 +61,7 @@ const callDeepSeek = async <T>(systemPrompt: string, userPrompt: string): Promis
     if (!apiKey) throw new Error("DeepSeek API Key not configured.");
 
     try {
-        const response = await fetch("https://api.deepseek.com/chat/completions", {
+        const response = await fetch("/deepseek-api/chat/completions", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
