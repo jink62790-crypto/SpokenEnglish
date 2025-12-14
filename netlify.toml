@@ -1,0 +1,25 @@
+# 代理配置：Google Gemini API + DeepSeek API，修复单页应用404
+[[redirects]]
+  from = "/google-api/*"
+  to = "https://generativelanguage.googleapis.com/*"
+  status = 200
+  force = true
+  [redirects.headers]
+    Access-Control-Allow-Origin = "*"
+    Access-Control-Allow-Methods = "GET, POST, OPTIONS"
+    Access-Control-Allow-Headers = "Content-Type, Authorization"
+
+[[redirects]]
+  from = "/deepseek-api/*"
+  to = "https://api.deepseek.com/*"
+  status = 200
+  force = true
+  [redirects.headers]
+    Access-Control-Allow-Origin = "*"
+    Access-Control-Allow-Methods = "GET, POST, OPTIONS"
+    Access-Control-Allow-Headers = "Content-Type, Authorization"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
