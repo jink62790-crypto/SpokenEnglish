@@ -2,13 +2,16 @@ import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { AnalysisResult, WordDefinition, PronunciationScore } from "../types";
 
 // Helper to get Gemini Client lazily
-// This prevents the app from crashing on load if the API key is missing/invalid
+// Configured to use the local proxy (/google-api) which is forwarded by Netlify/Vite to Google
 const getGenAI = () => {
   const apiKey = process.env.API_KEY;
   if (!apiKey) {
     throw new Error("Gemini API Key is missing. Please check your Netlify Environment Variables.");
   }
-  return new GoogleGenAI({ apiKey: apiKey });
+  
+  return new GoogleGenAI({ 
+    apiKey: apiKey
+  });
 };
 
 // Singleton Audio Context for playback
@@ -66,7 +69,7 @@ const callDeepSeek = async <T>(systemPrompt: string, userPrompt: string): Promis
                     { role: "user", content: userPrompt }
                 ],
                 response_format: { type: "json_object" },
-                temperature: 1.3 // DeepSeek usually benefits from slightly higher temp for creative/natural tasks, but for JSON stick to standard or 1.0
+                temperature: 1.3 
             })
         });
 
@@ -168,6 +171,7 @@ export const defineWord = async (word: string, contextSentence: string): Promise
   const prompt = `Define the word "${word}" in the context of this sentence: "${contextSentence}". Return JSON.`;
   
   try {
+      // Try Gemini via Proxy first
       const ai = getGenAI();
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
@@ -194,7 +198,7 @@ export const defineWord = async (word: string, contextSentence: string): Promise
   } catch (error) {
       console.warn("Gemini defineWord failed, attempting DeepSeek fallback...", error);
       
-      // FALLBACK: Use DeepSeek for text definitions
+      // FALLBACK: Use DeepSeek for text definitions (DeepSeek is native to China, works well without proxy if key is valid)
       if (process.env.DEEPSEEK_API_KEY) {
           const deepSeekSystemPrompt = `
             You are a helpful English dictionary assistant for learners.
@@ -242,7 +246,7 @@ export const scorePronunciation = async (targetText: string, userAudioBlob: Blob
         model: 'gemini-2.5-flash',
         contents: {
           parts: [
-            { inlineData: { mimeType: 'audio/wav', data: base64Audio } }, // Assuming recorder produces wav/webm
+            { inlineData: { mimeType: 'audio/wav', data: base64Audio } }, 
             { text: prompt }
           ]
         },
@@ -264,7 +268,6 @@ export const scorePronunciation = async (targetText: string, userAudioBlob: Blob
       }
       throw new Error("Gemini scoring failed");
   } catch (error) {
-       // DeepSeek cannot process audio, so we cannot fallback here.
        throw new Error("Pronunciation scoring requires Gemini API (Audio processing).");
   }
 };
@@ -294,7 +297,6 @@ export const generateSpeech = async (text: string): Promise<Uint8Array> => {
       return base64ToUint8Array(base64Audio);
   } catch (error) {
       console.error("TTS Generation failed:", error);
-      // DeepSeek does not support TTS.
       throw new Error("Speech generation unavailable.");
   }
 };
