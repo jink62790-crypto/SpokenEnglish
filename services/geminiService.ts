@@ -40,6 +40,43 @@ const base64ToUint8Array = (base64: string): Uint8Array => {
   return bytes;
 };
 
+// --- DeepSeek Helper ---
+const callDeepSeek = async <T>(systemPrompt: string, userPrompt: string): Promise<T> => {
+    const apiKey = process.env.DEEPSEEK_API_KEY;
+    if (!apiKey) throw new Error("DeepSeek API Key not configured.");
+
+    try {
+        const response = await fetch("https://api.deepseek.com/chat/completions", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${apiKey}`
+            },
+            body: JSON.stringify({
+                model: "deepseek-chat",
+                messages: [
+                    { role: "system", content: systemPrompt },
+                    { role: "user", content: userPrompt }
+                ],
+                response_format: { type: "json_object" },
+                temperature: 1.3 // DeepSeek usually benefits from slightly higher temp for creative/natural tasks, but for JSON stick to standard or 1.0
+            })
+        });
+
+        if (!response.ok) {
+            const errText = await response.text();
+            throw new Error(`DeepSeek API Error: ${response.status} - ${errText}`);
+        }
+
+        const data = await response.json();
+        const content = data.choices[0].message.content;
+        return JSON.parse(content) as T;
+    } catch (error) {
+        console.error("DeepSeek Call Failed:", error);
+        throw error;
+    }
+};
+
 // 1. Analyze Audio: Transcribe, Translate, Rewrite, Metadata
 export const analyzeAudio = async (file: File): Promise<AnalysisResult> => {
   const base64Audio = await fileToGenerativePart(file);
@@ -59,79 +96,116 @@ export const analyzeAudio = async (file: File): Promise<AnalysisResult> => {
     Return pure JSON matching the schema.
   `;
 
-  const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash',
-    contents: {
-      parts: [
-        { inlineData: { mimeType: file.type, data: base64Audio } },
-        { text: prompt }
-      ]
-    },
-    config: {
-      responseMimeType: 'application/json',
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          metadata: {
+  try {
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: {
+          parts: [
+            { inlineData: { mimeType: file.type, data: base64Audio } },
+            { text: prompt }
+          ]
+        },
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: {
             type: Type.OBJECT,
             properties: {
-              cefr: { type: Type.STRING },
-              wpm: { type: Type.NUMBER },
-              wordCount: { type: Type.NUMBER },
-              duration: { type: Type.NUMBER },
-            }
-          },
-          segments: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                id: { type: Type.NUMBER },
-                start: { type: Type.NUMBER },
-                end: { type: Type.NUMBER },
-                text: { type: Type.STRING },
-                translation: { type: Type.STRING },
-                nativeRewrite: { type: Type.STRING },
-                rewriteReason: { type: Type.STRING },
+              metadata: {
+                type: Type.OBJECT,
+                properties: {
+                  cefr: { type: Type.STRING },
+                  wpm: { type: Type.NUMBER },
+                  wordCount: { type: Type.NUMBER },
+                  duration: { type: Type.NUMBER },
+                }
+              },
+              segments: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    id: { type: Type.NUMBER },
+                    start: { type: Type.NUMBER },
+                    end: { type: Type.NUMBER },
+                    text: { type: Type.STRING },
+                    translation: { type: Type.STRING },
+                    nativeRewrite: { type: Type.STRING },
+                    rewriteReason: { type: Type.STRING },
+                  }
+                }
               }
             }
           }
         }
-      }
-    }
-  });
+      });
 
-  if (response.text) {
-    return JSON.parse(response.text) as AnalysisResult;
+      if (response.text) {
+        return JSON.parse(response.text) as AnalysisResult;
+      }
+      throw new Error("Empty response from Gemini");
+
+  } catch (error) {
+      console.error("Gemini Analyze Error:", error);
+      // NOTE: DeepSeek cannot replace this part because it does not support Audio files.
+      // We throw a descriptive error.
+      if (process.env.DEEPSEEK_API_KEY) {
+          throw new Error("Gemini Connection Failed. Note: DeepSeek API is available but cannot process Audio files directly. Please ensure you can access Google services for the initial file analysis.");
+      }
+      throw new Error("Failed to analyze audio. Please check your network connection.");
   }
-  throw new Error("Failed to analyze audio");
 };
 
 // 2. Define Word
 export const defineWord = async (word: string, contextSentence: string): Promise<WordDefinition> => {
   const prompt = `Define the word "${word}" in the context of this sentence: "${contextSentence}". Return JSON.`;
   
-  const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash',
-    contents: prompt,
-    config: {
-      responseMimeType: 'application/json',
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          word: { type: Type.STRING },
-          phonetic: { type: Type.STRING },
-          definition: { type: Type.STRING },
-          example: { type: Type.STRING },
+  try {
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt,
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              word: { type: Type.STRING },
+              phonetic: { type: Type.STRING },
+              definition: { type: Type.STRING },
+              example: { type: Type.STRING },
+            }
+          }
         }
-      }
-    }
-  });
+      });
 
-  if (response.text) {
-    return JSON.parse(response.text) as WordDefinition;
+      if (response.text) {
+        return JSON.parse(response.text) as WordDefinition;
+      }
+      throw new Error("Gemini returned empty text");
+
+  } catch (error) {
+      console.warn("Gemini defineWord failed, attempting DeepSeek fallback...", error);
+      
+      // FALLBACK: Use DeepSeek for text definitions
+      if (process.env.DEEPSEEK_API_KEY) {
+          const deepSeekSystemPrompt = `
+            You are a helpful English dictionary assistant for learners.
+            Return ONLY valid JSON matching this structure:
+            {
+              "word": "string (the word being defined)",
+              "phonetic": "string (IPA)",
+              "definition": "string (short clear definition in English)",
+              "example": "string (a new example sentence using the word)"
+            }
+          `;
+          try {
+             return await callDeepSeek<WordDefinition>(deepSeekSystemPrompt, prompt);
+          } catch (dsError) {
+             throw new Error("Both Gemini and DeepSeek failed to define word.");
+          }
+      }
+      
+      throw new Error("Failed to define word");
   }
-  throw new Error("Failed to define word");
 };
 
 // 3. Score Pronunciation (Shadowing)
@@ -153,54 +227,65 @@ export const scorePronunciation = async (targetText: string, userAudioBlob: Blob
     Provide a rating (Good, Average, Poor) and constructive feedback on how to sound more native.
   `;
 
-  const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash',
-    contents: {
-      parts: [
-        { inlineData: { mimeType: 'audio/wav', data: base64Audio } }, // Assuming recorder produces wav/webm
-        { text: prompt }
-      ]
-    },
-    config: {
-      responseMimeType: 'application/json',
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          score: { type: Type.NUMBER },
-          rating: { type: Type.STRING, enum: ['Good', 'Average', 'Poor'] },
-          feedback: { type: Type.STRING },
+  try {
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: {
+          parts: [
+            { inlineData: { mimeType: 'audio/wav', data: base64Audio } }, // Assuming recorder produces wav/webm
+            { text: prompt }
+          ]
+        },
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              score: { type: Type.NUMBER },
+              rating: { type: Type.STRING, enum: ['Good', 'Average', 'Poor'] },
+              feedback: { type: Type.STRING },
+            }
+          }
         }
-      }
-    }
-  });
+      });
 
-  if (response.text) {
-    return JSON.parse(response.text) as PronunciationScore;
+      if (response.text) {
+        return JSON.parse(response.text) as PronunciationScore;
+      }
+      throw new Error("Gemini scoring failed");
+  } catch (error) {
+       // DeepSeek cannot process audio, so we cannot fallback here.
+       throw new Error("Pronunciation scoring requires Gemini API (Audio processing).");
   }
-  throw new Error("Failed to score pronunciation");
 };
 
 // 4. TTS for Native Rewrite
 export const generateSpeech = async (text: string): Promise<Uint8Array> => {
-  const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash-preview-tts',
-    contents: {
-      parts: [{ text: text }]
-    },
-    config: {
-      responseModalities: [Modality.AUDIO],
-      speechConfig: {
-        voiceConfig: {
-          prebuiltVoiceConfig: { voiceName: 'Kore' } // 'Kore', 'Puck', 'Fenrir', 'Charon'
+  try {
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash-preview-tts',
+        contents: {
+          parts: [{ text: text }]
+        },
+        config: {
+          responseModalities: [Modality.AUDIO],
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: { voiceName: 'Kore' } // 'Kore', 'Puck', 'Fenrir', 'Charon'
+            }
+          }
         }
-      }
-    }
-  });
+      });
 
-  const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-  if (!base64Audio) throw new Error("No audio generated");
+      const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+      if (!base64Audio) throw new Error("No audio generated");
 
-  return base64ToUint8Array(base64Audio);
+      return base64ToUint8Array(base64Audio);
+  } catch (error) {
+      console.error("TTS Generation failed:", error);
+      // DeepSeek does not support TTS.
+      throw new Error("Speech generation unavailable.");
+  }
 };
 
 // 5. Play PCM Audio (Manual Decoding)

@@ -11,7 +11,9 @@ export default defineConfig(({ mode }) => {
     define: {
       // Correctly handle the process.env.API_KEY replacement during build
       // We check for GEMINI_API_KEY (from your Netlify screenshot) or fallback to API_KEY
-      'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY || env.API_KEY)
+      'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY || env.API_KEY),
+      // Add DeepSeek Key support
+      'process.env.DEEPSEEK_API_KEY': JSON.stringify(env.DEEPSEEK_API_KEY)
     }
   };
 });
